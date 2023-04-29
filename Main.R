@@ -13,13 +13,15 @@ library(umap)
 # and assigns the corresponding index to idx.
 
 gset <- getGEO("GSE21962", GSEMatrix =TRUE, AnnotGPL=FALSE)
-if (length(gset) > 1) idx <- grep("GPL5175", attr(gset, "names")) else idx <- 1
+idx <- 1
 gset <- gset[[idx]]
 
+# fvarLabels -> feature_variable_labels
+print(fvarLabels(gset))
 
- 
-#I n this line, the function fvarLabels() is used to retrieve and modify 
-# the feature variable labels (fvarLabels) of a GEOquery object gset.
+#In this line, the function fvarLabels() is used to retrieve and modify the feature variable labels (fvarLabels) of a GEOquery object gset.
+#The make.names() function is used to ensure that the column names are syntactically valid in R, as column names in R have certain naming rules, such as not allowing spaces or special characters. This function replaces invalid characters with a dot (.) and adds a prefix if the first character is not a letter.
+#Therefore, the purpose of the line fvarLabels(gset) <- make.names(fvarLabels(gset)) is to make sure that the fvarLabels of the gset object contain valid column names in R syntax.
 fvarLabels(gset) <- make.names(fvarLabels(gset))
 
 # group membership for all samples (0 corresponds to case and 1 corresponds to normal)
@@ -34,6 +36,8 @@ ex <- exprs(gset)
 # If the vlaue are negative assign them as NaN
 ex[which(ex <= 0)] <- NaN
 
+
+library(impute)
 
 # For the values which are missing, handle them using the KNN impute
 # perform KNN imputation on the filtered expression matrix
@@ -64,38 +68,26 @@ fit2 <- contrasts.fit(fit, cont.matrix)
 # compute statistics and table of top significant genes
 fit2 <- eBayes(fit2, 0.01)
 
-# Calculate how many genes are there that satisfy the conditions of p.value and fold change value range
-n_sig <- sum(tT$P.Value < 0.01 & (tT$logFC < 1/1.5 | tT$logFC > 1.5))
+
 
 print(n_sig) # The value of n_sig is 6397
 
 # Once we got count of the DEG's, copy them to another table
-tT <- topTable(fit2, adjust="fdr", sort.by="B", number=n_sig)
+tT <- topTable(fit2, adjust="fdr", sort.by="B", number=10000)
 
 # Since all the columns are not revelant to us we only extract the ones 
 # which are concerned to us
 tT <- subset(tT, select=c("ID","adj.P.Val","P.Value","t","B","logFC","GB_LIST","SPOT_ID","RANGE_GB","RANGE_STRAND","RANGE_START"))
-write.table(tT, file=stdout(), row.names=F, sep="\t")
+
+# Calculate how many genes are there that satisfy the conditions of p.value and fold change value range
+n_sig <- sum(tT$P.Value < 0.01 & (tT$logFC < 1/1.5 | tT$logFC > 1.5))
+print(n_sig)
+tT <- head(tT,n=n_sig)
 
 # We will also write this table to a csv file to do further analysis
 write.csv(tT, file = "DEGs.csv", row.names = TRUE)
 
-# Visualize and quality control test results.
-# Build histogram of P-values for all genes. Normal test
-# assumption is that most genes are not differentially expressed.
-tT2 <- topTable(fit2, adjust="fdr", sort.by="B", number=Inf)
-hist(tT2$adj.P.Val, col = "grey", border = "white", xlab = "P-adj",
-     ylab = "Number of genes", main = "P-adj value distribution")
 
-# summarize test results as "up", "down" or "not expressed"
-dT <- decideTests(fit2, adjust.method="fdr", p.value=0.01)
-
-# Venn diagram of results
-vennDiagram(dT, circle.col=palette())
-
-# create Q-Q plot for t-statistic
-t.good <- which(!is.na(fit2$F)) # filter out bad probes
-qqt(fit2$t[t.good], fit2$df.total[t.good], main="Moderated t statistic")
 
 # volcano plot (log P-value vs log fold change)
 colnames(fit2) # list contrast names
@@ -103,10 +95,6 @@ ct <- 1        # choose contrast of interest
 volcanoplot(fit2, coef=ct, main=colnames(fit2)[ct], pch=20,
             highlight=length(which(dT[,ct]!=0)), names=rep('+', nrow(fit2)))
 
-# MD plot (log fold change vs mean log expression)
-# highlight statistically significant (p-adj < 0.05) probes
-plotMD(fit2, column=ct, status=dT[,ct], legend=F, pch=20, cex=1)
-abline(h=0)
 
 
 
